@@ -61,7 +61,7 @@ void load_and_run(const char *filename, int argc, char **argv, char **envp)
 	Elf64_Phdr *program_header = program_header_table;
 	for (int i = 0; i < elf_header->e_phnum; i++) {
 
-		
+		//hhh;
 
 
 		program_header = program_header + elf_header->e_phentsize;
