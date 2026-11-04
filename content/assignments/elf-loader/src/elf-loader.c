@@ -77,8 +77,8 @@ void load_and_run(const char *filename, int argc, char **argv, char **envp)
 	
 	uint64_t load_bias = 0;
 	if (elf_header->e_type == ET_DYN) {
-		load_bias = mmap(NULL, program_size, 0, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-		munmap(load_bias, program_size);
+		load_bias = (uint64_t)mmap(NULL, program_size, 0, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+		munmap((void *)load_bias, program_size);
 	}
 
 	program_header = program_header_table;
@@ -107,12 +107,12 @@ void load_and_run(const char *filename, int argc, char **argv, char **envp)
 		}
 
 
-		void *p_ali_vaddr = (program_header->p_vaddr + load_bias) - ((program_header->p_vaddr + load_bias) % page_size);
+		void *p_ali_vaddr = (void *)((program_header->p_vaddr + load_bias) - ((program_header->p_vaddr + load_bias) % page_size));
 
 		mmap(p_ali_vaddr, program_header->p_memsz + ((program_header->p_vaddr + load_bias) % page_size),
 			 PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE | MAP_FIXED_NOREPLACE, -1, 0);
 
-		memcpy((program_header->p_vaddr + load_bias), elf_contents + program_header->p_offset, program_header->p_filesz);
+		memcpy((void *)(program_header->p_vaddr + load_bias), elf_contents + program_header->p_offset, program_header->p_filesz);
 
 		mprotect(p_ali_vaddr, program_header->p_memsz + ((program_header->p_vaddr + load_bias) % page_size), permisions);
 
@@ -197,8 +197,7 @@ void load_and_run(const char *filename, int argc, char **argv, char **envp)
 	memcpy(stack_pointers, auxv, sizeof(auxv));
 
 
-	// TODO: Set the entry point and the stack pointer
-	void (*entry)() = elf_header->e_entry + load_bias;
+	void (*entry)() = (void *)(elf_header->e_entry + load_bias);
 
 	// Transfer control
 	__asm__ __volatile__(
