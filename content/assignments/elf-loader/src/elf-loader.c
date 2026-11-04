@@ -48,7 +48,7 @@ void load_and_run(const char *filename, int argc, char **argv, char **envp)
 		exit(3);
 	}
 
-	if ((char)elf_header->e_ident[EI_CLASS] != ELFCLASS64) {
+	if (elf_header->e_ident[EI_CLASS] != ELFCLASS64) {
 		fprintf(stderr, "Not a 64-bit ELF\n");
 		exit(4);
 	}
@@ -73,7 +73,7 @@ void load_and_run(const char *filename, int argc, char **argv, char **envp)
 
 		program_header = (Elf64_Phdr *)((void *)program_header + elf_header->e_phentsize);
 	}
-	program_size += page_size;
+	program_size += page_size * elf_header->e_phnum;
 	
 	uint64_t load_bias = 0;
 	if (elf_header->e_type == ET_DYN) {
@@ -89,39 +89,36 @@ void load_and_run(const char *filename, int argc, char **argv, char **envp)
 			continue;
 		}
 
-
 		if (elf_header->e_phoff >= program_header->p_offset &&
 		    elf_header->e_phoff < program_header->p_offset + program_header->p_filesz) {
 			at_phdr = (program_header->p_vaddr + load_bias) + (elf_header->e_phoff - program_header->p_offset);
 		}
 
-		int permisions = 0;
+		int permissions = 0;
 		if (program_header->p_flags & PF_R) {
-			permisions = permisions | PROT_READ;
+			permissions = permissions | PROT_READ;
 		}
 		if (program_header->p_flags & PF_W) {
-			permisions = permisions | PROT_WRITE;
+			permissions = permissions | PROT_WRITE;
 		}
 		if (program_header->p_flags & PF_X) {
-			permisions = permisions | PROT_EXEC;
+			permissions = permissions | PROT_EXEC;
 		}
-
 
 		void *p_ali_vaddr = (void *)((program_header->p_vaddr + load_bias) - ((program_header->p_vaddr + load_bias) % page_size));
 
 		mmap(p_ali_vaddr, program_header->p_memsz + ((program_header->p_vaddr + load_bias) % page_size),
-			 PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE | MAP_FIXED_NOREPLACE, -1, 0);
+			 PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE | MAP_FIXED, -1, 0);
 
 		memcpy((void *)(program_header->p_vaddr + load_bias), elf_contents + program_header->p_offset, program_header->p_filesz);
 
-		mprotect(p_ali_vaddr, program_header->p_memsz + ((program_header->p_vaddr + load_bias) % page_size), permisions);
+		mprotect(p_ali_vaddr, program_header->p_memsz + ((program_header->p_vaddr + load_bias) % page_size), permissions);
 
 		program_header = (Elf64_Phdr *)((void *)program_header + elf_header->e_phentsize);
 	}
 
 	void *stack_base = mmap(NULL, STACK_PAGE_C * page_size, PROT_READ | PROT_WRITE,
 							MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
-
 	
 	long arg_size = 0;
 	for (int i = 0; i < argc; i++) {
@@ -149,7 +146,7 @@ void load_and_run(const char *filename, int argc, char **argv, char **envp)
 	for (int i = 0; i < argc; i++) {
 
 		*(char **)stack_pointers = stack_data;
-		stack_data =  stpcpy(stack_data, argv[i]) + 1;
+		stack_data = stpcpy(stack_data, argv[i]) + 1;
 		
 		stack_pointers += 8;
 	}
@@ -160,7 +157,7 @@ void load_and_run(const char *filename, int argc, char **argv, char **envp)
 	for (int i = 0; i < envc; i++) {
 
 		*(char **)stack_pointers = stack_data;
-		stack_data =  stpcpy(stack_data, envp[i]) + 1;
+		stack_data = stpcpy(stack_data, envp[i]) + 1;
 		
 		stack_pointers += 8;
 	}
@@ -168,7 +165,6 @@ void load_and_run(const char *filename, int argc, char **argv, char **envp)
 	*(long *)stack_pointers = 0;
 	stack_pointers += 8;
 	
-
 	uint64_t auxv[28] = {
 		AT_PHDR, at_phdr,
 		AT_PHENT, elf_header->e_phentsize,
@@ -195,7 +191,6 @@ void load_and_run(const char *filename, int argc, char **argv, char **envp)
 	auxv[25] = (uint64_t)stack_data;
 
 	memcpy(stack_pointers, auxv, sizeof(auxv));
-
 
 	void (*entry)() = (void *)(elf_header->e_entry + load_bias);
 
