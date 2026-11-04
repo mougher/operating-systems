@@ -12,11 +12,23 @@ make -C /home/alex/HarnessAP/operating-systems/content/assignments/elf-loader/sr
 make[2]: Entering directory '/home/alex/HarnessAP/operating-systems/content/assignments/elf-loader/src'
 gcc -g -static-pie -o elf-loader elf-loader.c
 elf-loader.c: In function ‘load_and_run’:
-elf-loader.c:85:37: warning: initialization of ‘void *’ from ‘long unsigned int’ makes pointer from integer without a cast [-Wint-conversion]
-   85 |                 void *p_ali_vaddr = program_header->p_vaddr - (program_header->p_vaddr % page_size);
+elf-loader.c:61:27: warning: assignment to ‘uint64_t’ {aka ‘long unsigned int’} from ‘void *’ makes integer from pointer without a cast [-Wint-conversion]
+   61 |                 load_bias = mmap(NULL, 10 * page_size, 0, 0, -1, 0);
+      |                           ^
+elf-loader.c:62:24: warning: passing argument 1 of ‘munmap’ makes pointer from integer without a cast [-Wint-conversion]
+   62 |                 munmap(load_bias, 10 * page_size);
+      |                        ^~~~~~~~~
+      |                        |
+      |                        uint64_t {aka long unsigned int}
+In file included from elf-loader.c:9:
+/usr/include/x86_64-linux-gnu/sys/mman.h:76:26: note: expected ‘void *’ but argument is of type ‘uint64_t’ {aka ‘long unsigned int’}
+   76 | extern int munmap (void *__addr, size_t __len) __THROW;
+      |                    ~~~~~~^~~~~~
+elf-loader.c:95:37: warning: initialization of ‘void *’ from ‘long unsigned int’ makes pointer from integer without a cast [-Wint-conversion]
+   95 |                 void *p_ali_vaddr = program_header->p_vaddr - (program_header->p_vaddr % page_size);
       |                                     ^~~~~~~~~~~~~~
-elf-loader.c:90:38: warning: passing argument 1 of ‘memcpy’ makes pointer from integer without a cast [-Wint-conversion]
-   90 |                 memcpy(program_header->p_vaddr, elf_contents + program_header->p_offset, program_header->p_filesz);
+elf-loader.c:100:38: warning: passing argument 1 of ‘memcpy’ makes pointer from integer without a cast [-Wint-conversion]
+  100 |                 memcpy(program_header->p_vaddr, elf_contents + program_header->p_offset, program_header->p_filesz);
       |                        ~~~~~~~~~~~~~~^~~~~~~~~
       |                                      |
       |                                      Elf64_Addr {aka long unsigned int}
@@ -24,8 +36,8 @@ In file included from elf-loader.c:12:
 /usr/include/string.h:43:39: note: expected ‘void * restrict’ but argument is of type ‘Elf64_Addr’ {aka ‘long unsigned int’}
    43 | extern void *memcpy (void *__restrict __dest, const void *__restrict __src,
       |                      ~~~~~~~~~~~~~~~~~^~~~~~
-elf-loader.c:182:27: warning: initialization of ‘void (*)()’ from ‘Elf64_Addr’ {aka ‘long unsigned int’} makes pointer from integer without a cast [-Wint-conversion]
-  182 |         void (*entry)() = elf_header->e_entry;
+elf-loader.c:186:27: warning: initialization of ‘void (*)()’ from ‘Elf64_Addr’ {aka ‘long unsigned int’} makes pointer from integer without a cast [-Wint-conversion]
+  186 |         void (*entry)() = elf_header->e_entry;
       |                           ^~~~~~~~~~
 make[2]: Leaving directory '/home/alex/HarnessAP/operating-systems/content/assignments/elf-loader/src'
 make -C /home/alex/HarnessAP/operating-systems/content/assignments/elf-loader/tests/snippets
@@ -36,8 +48,25 @@ nasm -felf64 -o nolibc_no_rwx_text.o nolibc_no_rwx_text.asm
 ld -nostdlib -o nolibc_no_rwx_text nolibc_no_rwx_text.o
 nasm -felf64 -o nolibc.o nolibc.asm
 ld -nostdlib -o nolibc nolibc.o
-make[2]: *** No rule to make target 'libc.a', needed by 'no_pie_hello'.  Stop.
+gcc -g -static -fcf-protection=none -fno-PIC -o no_pie_hello hello.c -no-pie
+gcc -g -static -fcf-protection=none -fno-PIC -o no_pie_argc argc.c -no-pie
+gcc -g -static -fcf-protection=none -fno-PIC -o no_pie_argv argv.c -no-pie
+gcc -g -static -fcf-protection=none -fno-PIC -o no_pie_auxv auxv.c -no-pie
+gcc -g -static-pie -o pie hello.c 
+gcc -g -static -fcf-protection=none -fno-PIC -o no_pie_envp envp.c -no-pie
 make[2]: Leaving directory '/home/alex/HarnessAP/operating-systems/content/assignments/elf-loader/tests/snippets'
-make[1]: *** [Makefile:22: snippets] Error 2
 make[1]: Leaving directory '/home/alex/HarnessAP/operating-systems/content/assignments/elf-loader/tests'
-make: *** [Makefile:31: check] Error 2
+./run_tests.sh
+error-bad-magic                  ........................ passed ...   5
+error-not-64                     ........................ passed ...   5
+nolibc                           ........................ failed ...  0
+nolibc_no_rwx_rodata             ........................ failed ...  0
+nolibc_no_rwx_text               ........................ failed ...  0
+no_pie_hello                     ........................ failed ...  0
+no_pie_argc                      ........................ failed ...  0
+no_pie_argv                      ........................ failed ...  0
+no_pie_envp                      ........................ failed ...  0
+no_pie_auxv                      ........................ failed ...  0
+pie                              ........................ failed ...  0
+
+Checker:                                                            10/100

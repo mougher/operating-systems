@@ -56,8 +56,32 @@ void load_and_run(const char *filename, int argc, char **argv, char **envp)
 	long page_size = sysconf(_SC_PAGESIZE);
 	long at_phdr = 0;
 
+	uint64_t program_size = 0;
+
 	Elf64_Phdr *program_header_table = elf_contents + elf_header->e_phoff;
 	Elf64_Phdr *program_header = program_header_table;
+
+	for (int i = 0; i < elf_header->e_phnum; i++) {
+
+		if (program_header->p_type != PT_LOAD) {
+			program_header = (Elf64_Phdr *)((void *)program_header + elf_header->e_phentsize);
+			continue;
+		}
+		if (program_header->p_vaddr + program_header->p_memsz > program_size) {
+			program_size = program_header->p_vaddr + program_header->p_memsz;
+		}
+
+		program_header = (Elf64_Phdr *)((void *)program_header + elf_header->e_phentsize);
+	}
+	program_size += page_size;
+	
+	uint64_t load_bias = 0;
+	if (elf_header->e_type == ET_DYN) {
+		load_bias = mmap(NULL, program_size, 0, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+		munmap(load_bias, program_size);
+	}
+
+	program_header = program_header_table;
 	for (int i = 0; i < elf_header->e_phnum; i++) {
 
 		if (program_header->p_type != PT_LOAD) {
@@ -65,9 +89,10 @@ void load_and_run(const char *filename, int argc, char **argv, char **envp)
 			continue;
 		}
 
+
 		if (elf_header->e_phoff >= program_header->p_offset &&
 		    elf_header->e_phoff < program_header->p_offset + program_header->p_filesz) {
-			at_phdr = program_header->p_vaddr + (elf_header->e_phoff - program_header->p_offset);
+			at_phdr = (program_header->p_vaddr + load_bias) + (elf_header->e_phoff - program_header->p_offset);
 		}
 
 		int permisions = 0;
@@ -82,14 +107,14 @@ void load_and_run(const char *filename, int argc, char **argv, char **envp)
 		}
 
 
-		void *p_ali_vaddr = program_header->p_vaddr - (program_header->p_vaddr % page_size);
+		void *p_ali_vaddr = (program_header->p_vaddr + load_bias) - ((program_header->p_vaddr + load_bias) % page_size);
 
-		mmap(p_ali_vaddr, program_header->p_memsz + (program_header->p_vaddr % page_size),
+		mmap(p_ali_vaddr, program_header->p_memsz + ((program_header->p_vaddr + load_bias) % page_size),
 			 PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE | MAP_FIXED_NOREPLACE, -1, 0);
 
-		memcpy(program_header->p_vaddr, elf_contents + program_header->p_offset, program_header->p_filesz);
+		memcpy((program_header->p_vaddr + load_bias), elf_contents + program_header->p_offset, program_header->p_filesz);
 
-		mprotect(p_ali_vaddr, program_header->p_memsz + (program_header->p_vaddr % page_size), permisions);
+		mprotect(p_ali_vaddr, program_header->p_memsz + ((program_header->p_vaddr + load_bias) % page_size), permisions);
 
 		program_header = (Elf64_Phdr *)((void *)program_header + elf_header->e_phentsize);
 	}
@@ -145,20 +170,20 @@ void load_and_run(const char *filename, int argc, char **argv, char **envp)
 	
 
 	uint64_t auxv[28] = {
-		 AT_PHDR, at_phdr,
-		 AT_PHENT, elf_header->e_phentsize,
-		 AT_PHNUM, elf_header->e_phnum,
-		 AT_PAGESZ, page_size,
-		 AT_BASE, 0,
-		 AT_ENTRY, elf_header->e_entry,
-		 AT_UID, getuid(),
-		 AT_EUID, geteuid(),
-		 AT_GID, getgid(),
-		 AT_EGID, getegid(),
-		 AT_SECURE, 0,
-		 AT_RANDOM, 0,
-		 AT_PLATFORM, 0,
-		 AT_NULL, 0
+		AT_PHDR, at_phdr,
+		AT_PHENT, elf_header->e_phentsize,
+		AT_PHNUM, elf_header->e_phnum,
+		AT_PAGESZ, page_size,
+		AT_BASE, 0,
+		AT_ENTRY, elf_header->e_entry + load_bias,
+		AT_UID, getuid(),
+		AT_EUID, geteuid(),
+		AT_GID, getgid(),
+		AT_EGID, getegid(),
+		AT_SECURE, 0,
+		AT_RANDOM, 0,
+		AT_PLATFORM, 0,
+		AT_NULL, 0
 	};
 
 	getrandom(stack_data, 16, 0);
@@ -171,15 +196,9 @@ void load_and_run(const char *filename, int argc, char **argv, char **envp)
 
 	memcpy(stack_pointers, auxv, sizeof(auxv));
 
-	/**
-	 * TODO: Support Static PIE Executables
-	 * Map PT_LOAD segments at a random load base.
-	 * Adjust virtual addresses of segments and entry point by load_base.
-	 * Stack setup (argc, argv, envp, auxv) same as above.
-	 */
 
 	// TODO: Set the entry point and the stack pointer
-	void (*entry)() = elf_header->e_entry;
+	void (*entry)() = elf_header->e_entry + load_bias;
 
 	// Transfer control
 	__asm__ __volatile__(
