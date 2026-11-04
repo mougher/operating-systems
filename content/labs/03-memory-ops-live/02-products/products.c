@@ -52,7 +52,7 @@ int main(int argc, char **argv)
 	f = fopen(path, "r");
 	if (f == NULL) {
 		perror("fopen");
-		return 1;
+		goto fail;
 	}
 
 	/*
@@ -72,13 +72,12 @@ int main(int argc, char **argv)
 			products[count].name = p;
 
 		/*
-		 * TODO 1: the name's length is known only now, at run time.
-		 * Allocate exactly strlen(name_buf) + 1 bytes with malloc()
-		 * (the + 1 is for the '\0' terminator), copy name_buf into
-		 * that block, and store the pointer in products[count].name.
-		 * If malloc() returns NULL, print an error and stop.
-		 * This is the whole point of the exercise: a size known only
-		 * at run time needs dynamic allocation.
+		 * TODO 1: name_buf is overwritten by the next line read, but
+		 * products[count].name has to be usable long after this loop.
+		 * Give the name a home that lasts, sized to this name.
+		 * (strdup() does in one call what malloc() and strcpy() do in
+		 * two.)  Allocation can fail; the labels at the end of main()
+		 * are where a failing run leaves.
 		 */
 
 		products[count].price = (unsigned int)strtoul(price_buf, NULL, 10);
@@ -97,10 +96,15 @@ int main(int argc, char **argv)
 			free(products[i].name);
 		}
 	/*
-	 * TODO 2: every name was allocated with malloc(), so free every one
-	 * before the program exits.  Miss one and it leaks -- run the program
-	 * under `valgrind --leak-check=full` to prove there is nothing left.
+	 * TODO 2: everything the loop allocated is still allocated.
+	 * Valgrind will tell you whether you got all of it.
 	 */
 
 	return 0;
+
+fail_products:
+	/* TODO 2: a run that stops early has allocated names too. */
+	fclose(f);
+fail:
+	return -1;
 }

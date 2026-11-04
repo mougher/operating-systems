@@ -2,85 +2,87 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <sys/stat.h>
 #include <sys/mman.h>
+
+#define BUFFER_SIZE (1 * 1024 * 1024)  /* 1 MiB */
 
 int main(int argc, char *argv[])
 {
+	unsigned char *buffer;
+	const char *src_path;
+	const char *dst_path;
+	size_t bytes_read;
+	FILE *src;
+	FILE *dst;
+
 	if (argc != 3) {
 		fprintf(stderr, "Usage: %s <source> <destination>\n", argv[0]);
-		return EXIT_FAILURE;
+		exit(EXIT_FAILURE);
 	}
 
-	const char *src_path = argv[1];
-	const char *dst_path = argv[2];
+	src_path = argv[1];
+	dst_path = argv[2];
 
-	/* Open source file. */
-	int src_fd = open(src_path, O_RDONLY);
-	if (src_fd < 0) {
-		perror("open source");
-		return EXIT_FAILURE;
+	/*
+	 * The copy buffer: an anonymous mapping, asked from the kernel
+	 * directly.  No file behind it (MAP_ANONYMOUS, fd -1), private to this
+	 * process, readable and writable, zero-filled.  From here on every way
+	 * out of main() has to unmap it, and the labels at the end of main()
+	 * are where the failing ways do that.
+	 */
+	buffer = mmap(NULL, BUFFER_SIZE, PROT_READ | PROT_WRITE,
+		      MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+	if (buffer == MAP_FAILED) {
+		perror("mmap");
+		goto fail;
 	}
 
-	/* Determine source file size. */
-	struct stat st;
-	if (fstat(src_fd, &st) < 0) {
-		perror("fstat");
-		close(src_fd);
-		return EXIT_FAILURE;
-	}
-	size_t file_size = (size_t)st.st_size;
-
-	/* Map source file into memory (read-only). */
-	void *src_map = mmap(NULL, file_size, PROT_READ, MAP_PRIVATE, src_fd, 0);
-	if (src_map == MAP_FAILED) {
-		perror("mmap source");
-		close(src_fd);
-		return EXIT_FAILURE;
-	}
-	close(src_fd);  /* fd can be closed after mmap */
-
-	/* Open/create destination file and set its size. */
-	int dst_fd = open(dst_path, O_RDWR | O_CREAT | O_TRUNC, 0644);
-	if (dst_fd < 0) {
-		perror("open destination");
-		munmap(src_map, file_size);
-		return EXIT_FAILURE;
+	/* Open source file for reading. */
+	src = fopen(src_path, "rb");
+	if (!src) {
+		perror("fopen");
+		goto fail_buffer;
 	}
 
-	/* Extend destination file to match source size. */
-	if (ftruncate(dst_fd, (off_t)file_size) < 0) {
-		perror("ftruncate");
-		close(dst_fd);
-		munmap(src_map, file_size);
-		return EXIT_FAILURE;
+	/* Open destination file for writing (create/truncate). */
+	dst = fopen(dst_path, "wb");
+	if (!dst) {
+		perror("fopen");
+		goto fail_src;
 	}
 
-	/* Map destination file into memory (read-write). */
-	void *dst_map = mmap(NULL, file_size, PROT_READ | PROT_WRITE,
-			     MAP_SHARED, dst_fd, 0);
-	if (dst_map == MAP_FAILED) {
-		perror("mmap destination");
-		close(dst_fd);
-		munmap(src_map, file_size);
-		return EXIT_FAILURE;
+	/* Read a block from the source into the buffer, write it out, repeat. */
+	while ((bytes_read = fread(buffer, 1, BUFFER_SIZE, src)) > 0) {
+		size_t bytes_written;
+
+		bytes_written = fwrite(buffer, 1, bytes_read, dst);
+		if (bytes_written != bytes_read) {
+			fprintf(stderr, "fwrite: short write\n");
+			goto fail_dst;
+		}
 	}
-	close(dst_fd);
 
-	/* Copy contents using memcpy on the memory-mapped regions. */
-	memcpy(dst_map, src_map, file_size);
+	if (ferror(src)) {
+		perror("fread");
+		goto fail_dst;
+	}
 
-	/* Flush destination mapping to disk. */
-	if (msync(dst_map, file_size, MS_SYNC) < 0)
-		perror("msync");  /* non-fatal */
+	fclose(dst);
+	fclose(src);
 
-	munmap(src_map, file_size);
-	munmap(dst_map, file_size);
+	/* Give the area back to the kernel. */
+	munmap(buffer, BUFFER_SIZE);
 
-	printf("Copied '%s' -> '%s' (%zu bytes)\n", src_path, dst_path,
-	       file_size);
-	return EXIT_SUCCESS;
+	printf("Copied '%s' -> '%s'\n", src_path, dst_path);
+
+	return 0;
+
+fail_dst:
+	fclose(dst);
+fail_src:
+	fclose(src);
+fail_buffer:
+	munmap(buffer, BUFFER_SIZE);
+fail:
+	return -1;
 }

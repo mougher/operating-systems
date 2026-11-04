@@ -39,11 +39,7 @@ make
 ./products products.txt
 ```
 
-`make run` does the same, and `make test` checks the result:
-
-```console
-make test
-```
+The prices must come out in ascending order; `sort -c -n` on the price column is one way to confirm that without reading the list.
 
 ## Results and Explanations
 
@@ -59,9 +55,7 @@ len = strlen(name_buf);
 products[count].name = malloc(len + 1);
 if (products[count].name == NULL) {
 	perror("malloc");
-	free_products(products, count);
-	fclose(f);
-	return 1;
+	goto fail_products;
 }
 memcpy(products[count].name, name_buf, len + 1);
 ```
@@ -69,6 +63,10 @@ memcpy(products[count].name, name_buf, len + 1);
 `name_buf` is a single fixed buffer reused for every line, so the name has to be *copied somewhere that lasts*.
 `malloc(len + 1)` reserves exactly the right amount — the `+ 1` is for the `'\0'` terminator, the classic off-by-one every C string allocation has to get right.
 `memcpy` of `len + 1` bytes copies the string and its terminator in one go.
+
+`strdup(name_buf)` does the same three steps -- measure, allocate, copy -- in one call, and returns `NULL` on the same failure.
+It is the idiomatic way once the pattern is understood, and the live README points it out; the block it returns is `free`'d like any other.
+The reference spells the steps out so that the `+ 1` is visible.
 
 ### Ownership: every `malloc` has a matching `free`
 
@@ -84,7 +82,19 @@ static void free_products(struct product *products, size_t count)
 }
 ```
 
-This runs on **both** ways out of the program: the normal path at the end, and the error path if a `malloc` fails partway through — where it frees exactly the names allocated so far, `count` of them, and no more.
+This runs on **both** ways out of the program: the normal path at the end, and the error path if a `malloc` fails partway through.
+The error path is a label at the end of `main()`:
+
+```c
+fail_products:
+	free_products(products, count);
+	fclose(f);
+fail:
+	return -1;
+```
+
+A failed allocation jumps to `fail_products`, which frees exactly the names allocated so far, `count` of them, and no more, because `count` is not incremented until a name is in place.
+Failing to open the file has nothing to free yet and jumps straight to `fail`.
 Freeing on every path is the habit this whole session is building.
 
 ### Sorting

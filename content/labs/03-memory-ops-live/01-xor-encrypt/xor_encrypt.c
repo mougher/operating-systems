@@ -35,29 +35,28 @@ int main(int argc, char **argv)
 	unsigned char in_buf[BLOCK_SIZE];
 	unsigned char out_buf[BLOCK_SIZE];
 	/*
-	 * TODO 1: declare the two work buffers, in_buf and out_buf.
+	 * TODO 1: declare the two work buffers, in_buf and out_buf, one block
+	 * of `unsigned char` each.
 	 *
-	 * Each holds exactly one block -- BLOCK_SIZE bytes.  Their size is a
-	 * compile-time constant, so they are ordinary fixed-size arrays of
-	 * `unsigned char`; there is nothing to malloc and nothing to free.
+	 * Before choosing how to allocate them, ask what is known about their
+	 * size, and when it is known.
 	 */
 
 	if (argc != 3) {
 		fprintf(stderr, "usage: %s <input> <output>\n", argv[0]);
-		return 1;
+		exit(EXIT_FAILURE);
 	}
 
 	in = fopen(argv[1], "rb");
 	if (in == NULL) {
 		perror("fopen input");
-		return 1;
+		goto fail;
 	}
 
 	out = fopen(argv[2], "wb");
 	if (out == NULL) {
 		perror("fopen output");
-		fclose(in);
-		return 1;
+		goto fail_in;
 	}
 
 	/*
@@ -71,24 +70,27 @@ int main(int argc, char **argv)
 			out_buf[i] = in_buf[i] ^ key[i]; 
 		}
 		/*
-		 * TODO 2: encrypt the n bytes just read.
+		 * TODO 2: encrypt the bytes just read, from in_buf into out_buf,
+		 * with the key.
 		 *
-		 * For each byte i from 0 to n-1, set out_buf[i] to
-		 * in_buf[i] XOR key[i].  Encrypt exactly n bytes, never
-		 * BLOCK_SIZE -- the final block may be shorter, and touching
-		 * bytes past n would corrupt the output.
+		 * Not every block is a full one.
 		 */
 
 		if (fwrite(out_buf, 1, n, out) != n) {
 			perror("fwrite");
-			fclose(in);
-			fclose(out);
-			return 1;
+			goto fail_out;
 		}
 	}
 
-	fclose(in);
 	fclose(out);
+	fclose(in);
 
 	return 0;
+
+fail_out:
+	fclose(out);
+fail_in:
+	fclose(in);
+fail:
+	return -1;
 }

@@ -13,10 +13,10 @@ void *malloc(size_t size);
 void  free(void *ptr);
 ```
 
-`malloc(size)` asks the C runtime — and ultimately the kernel — for `size` bytes, returning a pointer to the first one or `NULL` on failure.
+`malloc(size)` asks the allocator in the C library for `size` bytes, returning a pointer to the first one or `NULL` on failure.
 The memory persists until `free(ptr)` is called; it is **not** released when a variable goes out of scope.
 
-Unlike the global buffer, the size need not be known at compile time, and the memory is only occupied while it is needed.
+Unlike the global and local buffers, the size need not be known at compile time, the block can be as large as the heap allows, and the memory is only occupied while it is needed.
 The price is that every allocation now has an owner and a lifetime, and the compiler will not remind you about either.
 
 Forgetting `free()` is a **memory leak**.
@@ -35,60 +35,50 @@ make clean
 
 ## Results and Explanations
 
-### Step 1 — allocate the read buffer
+### Step 1 -- allocate the buffer
 
 ```C
-char *buffer = malloc(BUFFER_SIZE);
+buffer = malloc(BUFFER_SIZE);
 if (!buffer) {
 	perror("malloc");
-	return EXIT_FAILURE;
+	goto fail;
 }
 ```
 
+`buffer` is declared as `unsigned char *` with the other variables at the top of `main()`; the assignment is the line this variant is about.
+
 The `NULL` check is not optional.
-On Linux with default overcommit settings `malloc` rarely fails for a 1 MB request, which is exactly why untested error paths rot.
+On Linux with default overcommit settings `malloc` rarely fails for a 1 MiB request, which is exactly why untested error paths rot.
 
-### Steps 2, 3 and 6 — free on the early exits
+### Free on the early exits
 
-Every early return after the allocation must release it:
+Every way out of `main()` after the allocation must release it.
+The error paths do it through one more label at the end of the function:
 
 ```C
-free(buffer);
-return EXIT_FAILURE;
+fail_dst:
+	fclose(dst);
+fail_src:
+	fclose(src);
+fail_buffer:
+	free(buffer);
+fail:
+	return -1;
 ```
 
-**Count the TODOs in this file.** Most of them are `free()` calls on error paths, not the interesting part of the program.
-That imbalance is the lesson of the variant: the allocation is one line, and the bookkeeping it creates is spread across every exit from the function.
+The failure of `fopen()` for the source file jumps to `fail_buffer`: the buffer exists and nothing else does.
+A failure of the write jumps to `fail_dst`, and falls through all three.
+The allocation is one line; the bookkeeping it creates is one more label, and a `goto` on every path that can reach it.
+Without the labels it would be a `free()` repeated before every `return`, which is exactly the code that rots when a new exit is added.
 
 This is what `goto cleanup:` exists for in C, and why RAII exists in C++ and `defer` in Go.
 
-### Steps 4 and 5 — the per-chunk buffer
+### Step 2 -- the write
 
-```C
-char *write_buf = malloc(bytes_read);
-if (!write_buf) {
-	perror("malloc write_buf");
-	fclose(src);
-	fclose(dst);
-	free(buffer);
-	return EXIT_FAILURE;
-}
-memcpy(write_buf, buffer, bytes_read);
+The short-write path now has three things to close or free before it returns, instead of two.
+It jumps to `fail_dst`, and the labels do the rest.
 
-size_t bytes_written = fwrite(write_buf, 1, bytes_read, dst);
-free(write_buf);
-if (bytes_written != bytes_read) {
-	...
-}
-```
-
-Note the ordering: `write_buf` is freed **before** the short-write check, so that the error path does not have to free it too.
-Freeing as early as correctness allows is what keeps the number of cleanup paths down.
-
-Note also that this allocates and frees once **per chunk**, inside the loop.
-That is wasteful — the buffer could be allocated once outside — and it is done here so that the leak has somewhere to hide.
-
-### Step 7 — free on success
+### Step 3 -- free on success
 
 ```C
 free(buffer);
@@ -98,12 +88,29 @@ The path everyone remembers, and the only one that a quick manual test exercises
 
 ### What Valgrind reports
 
-A correct implementation ends with all blocks freed and no errors.
-If a `free()` is missing from an error path, the ordinary run still looks perfect — the error path never executed.
+```text
+  in use at exit: 0 bytes in 0 blocks
+total heap usage: 6 allocs, 6 frees, 1,061,808 bytes allocated
+ERROR SUMMARY: 0 errors from 0 contexts
+```
+
+One of those allocations is the buffer; the rest are stdio's.
+If a `free()` is missing from an error path, this ordinary run still looks perfect -- the error path never executed.
 This is why leaks survive testing, and why the tool matters more than the inspection.
+
+### What the kernel saw
+
+```console
+strace -e trace=brk,mmap,munmap ./copy_file input.bin output.bin
+```
+
+Among the start-up mappings there is one extra `mmap()`, of 1,052,672 bytes, and one extra `munmap()` at the end.
+That is the megabyte plus the allocator's header, rounded up to whole pages.
+A request this large is above the allocator's threshold (128 KB by default), so `malloc()` did not carve it out of the heap: it asked the kernel for a fresh area, and `free()` gave the area back.
+Keep that in mind for the last variant, which makes those two calls itself.
 
 ## References
 
 * `man 3 malloc`, `man 3 free`
 * `man 1 valgrind`, [Valgrind quick start](https://valgrind.org/docs/manual/quick-start.html)
-* `man 3 memcpy`
+* `man 3 mallopt` -- `M_MMAP_THRESHOLD`, the size above which `malloc()` uses `mmap()`
