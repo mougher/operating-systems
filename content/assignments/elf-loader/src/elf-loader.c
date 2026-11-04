@@ -11,6 +11,8 @@
 #include <elf.h>
 #include <string.h>
 
+#define STACK_PAGE_C 1024
+
 void *map_elf(const char *filename)
 {
 	// This part helps you store the content of the ELF file inside the buffer.
@@ -38,7 +40,6 @@ void *map_elf(const char *filename)
 
 void load_and_run(const char *filename, int argc, char **argv, char **envp)
 {
-	// Contents of the ELF file are in the buffer: elf_contents[x] is the x-th byte of the ELF file.
 	void *elf_contents = (char *)map_elf(filename);
 	Elf64_Ehdr *elf_header = (Elf64_Ehdr *)elf_contents;
 	if (memcmp(elf_header->e_ident, ELFMAG, SELFMAG)) {
@@ -51,13 +52,6 @@ void load_and_run(const char *filename, int argc, char **argv, char **envp)
 		exit(4);
 	}
 
-	/**
-	 * TODO: Load PT_LOAD segments
-	 * For minimal syscall-only binaries.
-	 * For each PT_LOAD segment:
-	 * - Map the segments in memory. Permissions can be RWX for now.
-	 */
-
 	long page_size = sysconf(_SC_PAGESIZE);
 
 	Elf64_Phdr *program_header_table = elf_contents + elf_header->e_phoff;
@@ -65,6 +59,7 @@ void load_and_run(const char *filename, int argc, char **argv, char **envp)
 	for (int i = 0; i < elf_header->e_phnum; i++) {
 
 		if (program_header->p_type != PT_LOAD) {
+			program_header = (Elf64_Phdr *)((void *)program_header + elf_header->e_phentsize);
 			continue;
 		}
 
@@ -82,26 +77,64 @@ void load_and_run(const char *filename, int argc, char **argv, char **envp)
 
 		void *p_ali_vaddr = program_header->p_vaddr - (program_header->p_vaddr % page_size);
 
-		mmap(p_ali_vaddr, program_header->p_filesz + (program_header->p_vaddr % page_size),
+		mmap(p_ali_vaddr, program_header->p_memsz + (program_header->p_vaddr % page_size),
 			 PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE | MAP_FIXED_NOREPLACE, -1, 0);
 
 		memcpy(program_header->p_vaddr, elf_contents + program_header->p_offset, program_header->p_filesz);
 
-		mprotect(p_ali_vaddr, program_header->p_filesz + page_size - 1, permisions);
+		mprotect(p_ali_vaddr, program_header->p_memsz + (program_header->p_vaddr % page_size), permisions);
 
 		program_header = (Elf64_Phdr *)((void *)program_header + elf_header->e_phentsize);
 	}
 
+	void *stack_base = mmap(NULL, STACK_PAGE_C * page_size, PROT_READ | PROT_WRITE,
+							MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
 
-	/**
-	 * TODO: Support Static Non-PIE Binaries with libc
-	 * Must set up a valid process stack, including:
-	 *	- argc, argv, envp
-	 *	- auxv vector (with entries like AT_PHDR, AT_PHENT, AT_PHNUM, etc.)
-	 * Note: Beware of the AT_RANDOM, AT_PHDR entries, the application will
-	 * crash if you do not set them up properly.
-	 */
-	void *sp = NULL;
+	
+	long arg_size = 0;
+	for (int i = 0; i < argc; i++) {
+		arg_size += strlen(argv[i]);
+	}
+
+	long envc = 0;
+	long env_size = 0;
+
+	for (int i = 0; envp[i] != 0; i++) {
+		envc++;
+		env_size += strlen(envp[i]);
+	}
+
+	void *stack_top = stack_base + STACK_PAGE_C * page_size;
+	void *stack_data = (stack_top - arg_size - env_size - 128)
+					  - (((long)stack_top - arg_size - env_size - 16) % 16);
+	long c = (envc + argc) % 2 == 0 ? 4 : 3;
+	void *stack_pointers = stack_data - (envc + argc + c) * 8 - 14 * 16;
+	void *sp = stack_pointers;
+
+	*(long *)stack_pointers = argc;
+	stack_pointers += 8;
+
+	for (int i = 0; i < argc; i++) {
+
+		*(char **)stack_pointers = stack_data;
+		stack_data =  strcpy(stack_data, argv[i]) + 1;
+		
+		stack_pointers += 8;
+	}
+
+	*(long *)stack_pointers = 0;
+	stack_pointers += 8;
+
+	for (int i = 0; i < envc; i++) {
+
+		*(char **)stack_pointers = stack_data;
+		stack_data =  strcpy(stack_data, envp[i]) + 1;
+		
+		stack_pointers += 8;
+	}
+
+	*(long *)stack_pointers = 0;
+	stack_pointers += 8;
 
 	/**
 	 * TODO: Support Static PIE Executables
