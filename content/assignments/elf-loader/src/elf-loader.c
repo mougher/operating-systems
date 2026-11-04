@@ -57,14 +57,23 @@ void load_and_run(const char *filename, int argc, char **argv, char **envp)
 	 * For each PT_LOAD segment:
 	 * - Map the segments in memory. Permissions can be RWX for now.
 	 */
+
+	long page_size = sysconf(_SC_PAGESIZE);
+
 	Elf64_Phdr *program_header_table = elf_contents + elf_header->e_phoff;
 	Elf64_Phdr *program_header = program_header_table;
 	for (int i = 0; i < elf_header->e_phnum; i++) {
 
-		//hhh;
+		if (program_header->p_type != PT_LOAD) {
+			continue;
+		}
+
+		void *p_ali_vaddr = program_header->p_vaddr - (program_header->p_vaddr % page_size);
+		mmap(p_ali_vaddr, program_header->p_filesz + page_size - 1, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_ANONYMOUS | MAP_PRIVATE | MAP_FIXED_NOREPLACE, -1, 0);
+		memcpy(program_header->p_vaddr, elf_contents + program_header->p_offset, program_header->p_memsz);
 
 
-		program_header = program_header + elf_header->e_phentsize;
+		program_header = (Elf64_Phdr *)((void *)program_header + elf_header->e_phentsize);
 	}
 
 	/**
@@ -92,7 +101,7 @@ void load_and_run(const char *filename, int argc, char **argv, char **envp)
 	 */
 
 	// TODO: Set the entry point and the stack pointer
-	void (*entry)() = NULL;
+	void (*entry)() = elf_header->e_entry;
 
 	// Transfer control
 	__asm__ __volatile__(
