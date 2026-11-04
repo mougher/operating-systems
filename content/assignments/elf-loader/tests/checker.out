@@ -12,24 +12,21 @@ make -C /home/alex/HarnessAP/operating-systems/content/assignments/elf-loader/sr
 make[2]: Entering directory '/home/alex/HarnessAP/operating-systems/content/assignments/elf-loader/src'
 gcc -g -static-pie -o elf-loader elf-loader.c
 elf-loader.c: In function ‘load_and_run’:
-elf-loader.c:45:25: warning: passing argument 1 of ‘fprintf’ makes pointer from integer without a cast [-Wint-conversion]
-   45 |                 fprintf(STDERR_FILENO, "Not a valid ELF file\n");
-      |                         ^~~~~~~~~~~~~
-      |                         |
-      |                         int
-In file included from elf-loader.c:5:
-/usr/include/stdio.h:350:38: note: expected ‘FILE * restrict’ but argument is of type ‘int’
-  350 | extern int fprintf (FILE *__restrict __stream,
-      |                     ~~~~~~~~~~~~~~~~~^~~~~~~~
-elf-loader.c:49:25: warning: passing argument 1 of ‘fprintf’ makes pointer from integer without a cast [-Wint-conversion]
-   49 |                 fprintf(STDERR_FILENO, "Not a 64-bit ELF\n");
-      |                         ^~~~~~~~~~~~~
-      |                         |
-      |                         int
-In file included from elf-loader.c:5:
-/usr/include/stdio.h:350:38: note: expected ‘FILE * restrict’ but argument is of type ‘int’
-  350 | extern int fprintf (FILE *__restrict __stream,
-      |                     ~~~~~~~~~~~~~~~~~^~~~~~~~
+elf-loader.c:85:37: warning: initialization of ‘void *’ from ‘long unsigned int’ makes pointer from integer without a cast [-Wint-conversion]
+   85 |                 void *p_ali_vaddr = program_header->p_vaddr - (program_header->p_vaddr % page_size);
+      |                                     ^~~~~~~~~~~~~~
+elf-loader.c:90:38: warning: passing argument 1 of ‘memcpy’ makes pointer from integer without a cast [-Wint-conversion]
+   90 |                 memcpy(program_header->p_vaddr, elf_contents + program_header->p_offset, program_header->p_filesz);
+      |                        ~~~~~~~~~~~~~~^~~~~~~~~
+      |                                      |
+      |                                      Elf64_Addr {aka long unsigned int}
+In file included from elf-loader.c:12:
+/usr/include/string.h:43:39: note: expected ‘void * restrict’ but argument is of type ‘Elf64_Addr’ {aka ‘long unsigned int’}
+   43 | extern void *memcpy (void *__restrict __dest, const void *__restrict __src,
+      |                      ~~~~~~~~~~~~~~~~~^~~~~~
+elf-loader.c:182:27: warning: initialization of ‘void (*)()’ from ‘Elf64_Addr’ {aka ‘long unsigned int’} makes pointer from integer without a cast [-Wint-conversion]
+  182 |         void (*entry)() = elf_header->e_entry;
+      |                           ^~~~~~~~~~
 make[2]: Leaving directory '/home/alex/HarnessAP/operating-systems/content/assignments/elf-loader/src'
 make -C /home/alex/HarnessAP/operating-systems/content/assignments/elf-loader/tests/snippets
 make[2]: Entering directory '/home/alex/HarnessAP/operating-systems/content/assignments/elf-loader/tests/snippets'
