@@ -68,20 +68,30 @@ void load_and_run(const char *filename, int argc, char **argv, char **envp)
 			continue;
 		}
 
-		void *p_ali_vaddr = program_header->p_vaddr - (program_header->p_vaddr % page_size);
-		mmap(p_ali_vaddr, program_header->p_filesz + page_size - 1, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_ANONYMOUS | MAP_PRIVATE | MAP_FIXED_NOREPLACE, -1, 0);
-		memcpy(program_header->p_vaddr, elf_contents + program_header->p_offset, program_header->p_memsz);
+		int permisions = 0;
+		if (program_header->p_flags & PF_R) {
+			permisions = permisions | PROT_READ;
+		}
+		if (program_header->p_flags & PF_W) {
+			permisions = permisions | PROT_WRITE;
+		}
+		if (program_header->p_flags & PF_X) {
+			permisions = permisions | PROT_EXEC;
+		}
 
+
+		void *p_ali_vaddr = program_header->p_vaddr - (program_header->p_vaddr % page_size);
+
+		mmap(p_ali_vaddr, program_header->p_filesz + (program_header->p_vaddr % page_size),
+			 PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE | MAP_FIXED_NOREPLACE, -1, 0);
+
+		memcpy(program_header->p_vaddr, elf_contents + program_header->p_offset, program_header->p_filesz);
+
+		mprotect(p_ali_vaddr, program_header->p_filesz + page_size - 1, permisions);
 
 		program_header = (Elf64_Phdr *)((void *)program_header + elf_header->e_phentsize);
 	}
 
-	/**
-	 * TODO: Load Memory Regions with Correct Permissions
-	 * For each PT_LOAD segment:
-	 *	- Set memory permissions according to program header p_flags (PF_R, PF_W, PF_X).
-	 *	- Use mprotect() or map with the correct permissions directly using mmap().
-	 */
 
 	/**
 	 * TODO: Support Static Non-PIE Binaries with libc
