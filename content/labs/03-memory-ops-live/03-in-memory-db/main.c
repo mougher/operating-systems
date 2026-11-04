@@ -8,7 +8,7 @@
  * never shrunk.
  */
 #define CHUNK		4
-
+#define N 10
 #define NAME_LEN	32
 
 /* One row in our database. */
@@ -46,6 +46,7 @@ struct database {
 void db_init(struct database *db)
 {
 	/* TODO: initialise the three fields. */
+	db->capacity = db->count = db->records = 0;
 }
 
 /*
@@ -70,6 +71,16 @@ void db_init(struct database *db)
 int db_add(struct database *db, int id, const char *name)
 {
 	/* TODO: grow the array if it is full, then store the record. */
+	while (db->capacity < (db->count + 1) * sizeof(struct record)) {
+		db->capacity += CHUNK;
+	} 
+	void *p = realloc(db->records, db->capacity);
+	if (p == NULL) return -1;
+	db->records = p;
+	db->records[db->count].id = id;
+	strncpy(db->records[db->count].name, name, NAME_LEN);
+	
+	db->count++;
 
 	return 0;
 }
@@ -92,7 +103,33 @@ void db_print(const struct database *db)
  */
 void db_free(struct database *db)
 {
-	/* TODO: free db->records and reset the fields. */
+	free(db->records);
+}
+
+int db_delete(struct database *db, int id) {
+
+	struct record *p;
+	for (int i = 0;1; i++) {
+		if (i >= db->count) {
+			return -1;
+		}
+		if (db->records[i].id == id) {
+			p = db->records + i;
+			break;
+		}
+	}
+
+	strncpy(p->name, db->records[db->count - 1].name, NAME_LEN);
+	p->id = db->records[db->count - 1].id;
+	db->count--;
+
+	if (db->capacity >= N && db->count <= db->capacity - N) {
+		db->capacity -= N;
+		db->records = realloc(db->records, db->capacity);
+	}
+
+
+	return 0;
 }
 
 /*
@@ -115,11 +152,17 @@ int main(void)
 
 	db_init(&db);
 
-	while (scanf("%d %31s", &id, name) == 2) {
-		if (db_add(&db, id, name) != 0) {
-			fprintf(stderr, "out of memory\n");
-			db_free(&db);
-			return 1;
+	char c[4];
+
+	while (scanf("%3s %d %31s",c , &id, name) > 1) {
+		if (c[0] == 'a') {
+			if (db_add(&db, id, name) != 0) {
+				fprintf(stderr, "out of memory\n");
+				db_free(&db);
+				return 1;
+			}
+		} else {
+			db_delete(&db, id);
 		}
 	}
 

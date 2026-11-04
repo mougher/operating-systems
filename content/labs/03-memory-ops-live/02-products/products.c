@@ -65,6 +65,12 @@ int main(int argc, char **argv)
 		/* fgets keeps the newline; drop it. */
 		name_buf[strcspn(name_buf, "\n")] = '\0';
 
+
+			char *p = malloc(strlen(name_buf) + 1);
+			if (p == NULL) return 1;
+			strcpy(p, name_buf);
+			products[count].name = p;
+
 		/*
 		 * TODO 1: the name's length is known only now, at run time.
 		 * Allocate exactly strlen(name_buf) + 1 bytes with malloc()
@@ -84,9 +90,12 @@ int main(int argc, char **argv)
 	qsort(products, count, sizeof(products[0]), by_price);
 
 	printf("Sorted %zu products by price:\n", count);
-	for (i = 0; i < count; i++)
-		printf("  %6u  %s\n", products[i].price, products[i].name);
+	for (i = 0; i < count; i++) {
+		printf("  %6u  %s\n", products[i].price, products[i].name);}
 
+		for (int i = 0; i < count; i++) {
+			free(products[i].name);
+		}
 	/*
 	 * TODO 2: every name was allocated with malloc(), so free every one
 	 * before the program exits.  Miss one and it leaks -- run the program

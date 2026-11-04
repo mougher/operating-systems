@@ -8,6 +8,8 @@
 #include <unistd.h>
 #include <sys/mman.h>
 #include <fcntl.h>
+#include <elf.h>
+#include <string.h>
 
 void *map_elf(const char *filename)
 {
@@ -37,13 +39,17 @@ void *map_elf(const char *filename)
 void load_and_run(const char *filename, int argc, char **argv, char **envp)
 {
 	// Contents of the ELF file are in the buffer: elf_contents[x] is the x-th byte of the ELF file.
-	void *elf_contents = map_elf(filename);
+	void *elf_contents = (char *)map_elf(filename);
+	Elf64_Ehdr *elf_header = (Elf64_Ehdr *)elf_contents;
+	if (memcmp(elf_header->e_ident, ELFMAG, SELFMAG)) {
+		fprintf(stderr, "Not a valid ELF file\n");
+		exit(3);
+	}
 
-	/**
-	 * TODO: ELF Header Validation
-	 * Validate ELF magic bytes - "Not a valid ELF file" + exit code 3 if invalid.
-	 * Validate ELF class is 64-bit (ELFCLASS64) - "Not a 64-bit ELF" + exit code 4 if invalid.
-	 */
+	if ((char)elf_header->e_ident[EI_CLASS] != ELFCLASS64) {
+		fprintf(stderr, "Not a 64-bit ELF\n");
+		exit(4);
+	}
 
 	/**
 	 * TODO: Load PT_LOAD segments
@@ -51,6 +57,15 @@ void load_and_run(const char *filename, int argc, char **argv, char **envp)
 	 * For each PT_LOAD segment:
 	 * - Map the segments in memory. Permissions can be RWX for now.
 	 */
+	Elf64_Phdr *program_header_table = elf_contents + elf_header->e_phoff;
+	Elf64_Phdr *program_header = program_header_table;
+	for (int i = 0; i < elf_header->e_phnum; i++) {
+
+		if ()
+
+
+		program_header = program_header + elf_header->e_phentsize;
+	}
 
 	/**
 	 * TODO: Load Memory Regions with Correct Permissions

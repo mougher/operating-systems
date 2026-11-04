@@ -48,6 +48,30 @@ static int list_insert(struct product **head, unsigned int price,
 	 * name is its own heap block.  If either malloc() fails, free anything
 	 * you already allocated and return -1.
 	 */
+		struct product *p = malloc(sizeof(struct product));
+		if (p == NULL) return -1;
+		p->price = price;
+		p->name = malloc(strlen(name) + 1);
+		p->next = NULL;
+		if (p->name == NULL) return -1;
+		strcpy(p->name, name);
+
+		struct product *iter = *head;
+		if (*head == NULL) {
+			*head = p;
+			return 0;
+		}
+		while (iter->next != NULL) {
+			if (iter->price <= price) {
+				p->next = iter->next;
+				iter->next = p;
+				return 0;
+			}
+			iter = iter->next;
+		}
+		iter->next = p;
+		
+		
 
 	/*
 	 * TODO 2: splice the node into the list so it stays sorted by price,

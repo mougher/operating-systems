@@ -1,0 +1,46 @@
+make clean_src clean_snippets src snippets
+make[1]: Entering directory '/home/alex/HarnessAP/operating-systems/content/assignments/elf-loader/tests'
+make -C /home/alex/HarnessAP/operating-systems/content/assignments/elf-loader/src clean
+make[2]: Entering directory '/home/alex/HarnessAP/operating-systems/content/assignments/elf-loader/src'
+rm -f *.o elf-loader
+make[2]: Leaving directory '/home/alex/HarnessAP/operating-systems/content/assignments/elf-loader/src'
+make -C /home/alex/HarnessAP/operating-systems/content/assignments/elf-loader/tests/snippets clean
+make[2]: Entering directory '/home/alex/HarnessAP/operating-systems/content/assignments/elf-loader/tests/snippets'
+rm -f *.o pie no_pie_hello no_pie_argc no_pie_argv no_pie_auxv no_pie_envp nolibc_no_rwx_text nolibc_no_rwx_rodata nolibc
+make[2]: Leaving directory '/home/alex/HarnessAP/operating-systems/content/assignments/elf-loader/tests/snippets'
+make -C /home/alex/HarnessAP/operating-systems/content/assignments/elf-loader/src
+make[2]: Entering directory '/home/alex/HarnessAP/operating-systems/content/assignments/elf-loader/src'
+gcc -g -static-pie -o elf-loader elf-loader.c
+elf-loader.c: In function ‘load_and_run’:
+elf-loader.c:45:25: warning: passing argument 1 of ‘fprintf’ makes pointer from integer without a cast [-Wint-conversion]
+   45 |                 fprintf(STDERR_FILENO, "Not a valid ELF file\n");
+      |                         ^~~~~~~~~~~~~
+      |                         |
+      |                         int
+In file included from elf-loader.c:5:
+/usr/include/stdio.h:350:38: note: expected ‘FILE * restrict’ but argument is of type ‘int’
+  350 | extern int fprintf (FILE *__restrict __stream,
+      |                     ~~~~~~~~~~~~~~~~~^~~~~~~~
+elf-loader.c:49:25: warning: passing argument 1 of ‘fprintf’ makes pointer from integer without a cast [-Wint-conversion]
+   49 |                 fprintf(STDERR_FILENO, "Not a 64-bit ELF\n");
+      |                         ^~~~~~~~~~~~~
+      |                         |
+      |                         int
+In file included from elf-loader.c:5:
+/usr/include/stdio.h:350:38: note: expected ‘FILE * restrict’ but argument is of type ‘int’
+  350 | extern int fprintf (FILE *__restrict __stream,
+      |                     ~~~~~~~~~~~~~~~~~^~~~~~~~
+make[2]: Leaving directory '/home/alex/HarnessAP/operating-systems/content/assignments/elf-loader/src'
+make -C /home/alex/HarnessAP/operating-systems/content/assignments/elf-loader/tests/snippets
+make[2]: Entering directory '/home/alex/HarnessAP/operating-systems/content/assignments/elf-loader/tests/snippets'
+nasm -felf64 -o nolibc_no_rwx_rodata.o nolibc_no_rwx_rodata.asm
+ld -nostdlib -o nolibc_no_rwx_rodata nolibc_no_rwx_rodata.o
+nasm -felf64 -o nolibc_no_rwx_text.o nolibc_no_rwx_text.asm
+ld -nostdlib -o nolibc_no_rwx_text nolibc_no_rwx_text.o
+nasm -felf64 -o nolibc.o nolibc.asm
+ld -nostdlib -o nolibc nolibc.o
+make[2]: *** No rule to make target 'libc.a', needed by 'no_pie_hello'.  Stop.
+make[2]: Leaving directory '/home/alex/HarnessAP/operating-systems/content/assignments/elf-loader/tests/snippets'
+make[1]: *** [Makefile:22: snippets] Error 2
+make[1]: Leaving directory '/home/alex/HarnessAP/operating-systems/content/assignments/elf-loader/tests'
+make: *** [Makefile:31: check] Error 2
