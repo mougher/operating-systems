@@ -10,9 +10,10 @@
 #include <fcntl.h>
 #include <elf.h>
 #include <string.h>
-#include <sys/random.h>
+#include <sys/auxv.h>
 
 #define STACK_PAGE_C 1024
+#define AUXV_PAIRS 21
 
 void *map_elf(const char *filename)
 {
@@ -56,7 +57,8 @@ void load_and_run(const char *filename, int argc, char **argv, char **envp)
 	long page_size = sysconf(_SC_PAGESIZE);
 	long at_phdr = 0;
 
-	uint64_t program_size = 0;
+	uint64_t program_min = UINT64_MAX;
+	uint64_t program_end = 0;
 
 	Elf64_Phdr *program_header_table = elf_contents + elf_header->e_phoff;
 	Elf64_Phdr *program_header = program_header_table;
@@ -67,18 +69,29 @@ void load_and_run(const char *filename, int argc, char **argv, char **envp)
 			program_header = (Elf64_Phdr *)((void *)program_header + elf_header->e_phentsize);
 			continue;
 		}
-		if (program_header->p_vaddr + program_header->p_memsz > program_size) {
-			program_size = program_header->p_vaddr + program_header->p_memsz;
-		}
+
+		uint64_t start = program_header->p_vaddr & ~(uint64_t)(page_size - 1);
+		uint64_t end = program_header->p_vaddr + program_header->p_memsz;
+
+		if (start < program_min)
+			program_min = start;
+		if (end > program_end)
+			program_end = end;
 
 		program_header = (Elf64_Phdr *)((void *)program_header + elf_header->e_phentsize);
 	}
-	program_size += page_size * elf_header->e_phnum;
-	
+
+	uint64_t program_size = program_end - program_min;
 	uint64_t load_bias = 0;
+
 	if (elf_header->e_type == ET_DYN) {
-		load_bias = (uint64_t)mmap(NULL, program_size, 0, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-		munmap((void *)load_bias, program_size);
+		void *image = mmap(NULL, program_size, PROT_READ | PROT_WRITE,
+				   MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+
+		load_bias = (uint64_t)image - program_min;
+	} else {
+		mmap((void *)program_min, program_size, PROT_READ | PROT_WRITE,
+		     MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);
 	}
 
 	program_header = program_header_table;
@@ -94,25 +107,35 @@ void load_and_run(const char *filename, int argc, char **argv, char **envp)
 			at_phdr = (program_header->p_vaddr + load_bias) + (elf_header->e_phoff - program_header->p_offset);
 		}
 
+		memcpy((void *)(program_header->p_vaddr + load_bias),
+		       elf_contents + program_header->p_offset,
+		       program_header->p_filesz);
+
+		program_header = (Elf64_Phdr *)((void *)program_header + elf_header->e_phentsize);
+	}
+
+	program_header = program_header_table;
+	for (int i = 0; i < elf_header->e_phnum; i++) {
+
+		if (program_header->p_type != PT_LOAD) {
+			program_header = (Elf64_Phdr *)((void *)program_header + elf_header->e_phentsize);
+			continue;
+		}
+
 		int permissions = 0;
-		if (program_header->p_flags & PF_R) {
-			permissions = permissions | PROT_READ;
-		}
-		if (program_header->p_flags & PF_W) {
-			permissions = permissions | PROT_WRITE;
-		}
-		if (program_header->p_flags & PF_X) {
-			permissions = permissions | PROT_EXEC;
-		}
+		if (program_header->p_flags & PF_R)
+			permissions |= PROT_READ;
+		if (program_header->p_flags & PF_W)
+			permissions |= PROT_WRITE;
+		if (program_header->p_flags & PF_X)
+			permissions |= PROT_EXEC;
 
-		void *p_ali_vaddr = (void *)((program_header->p_vaddr + load_bias) - ((program_header->p_vaddr + load_bias) % page_size));
+		uint64_t start = program_header->p_vaddr + load_bias;
+		void *p_ali_vaddr = (void *)(start & ~(uint64_t)(page_size - 1));
 
-		mmap(p_ali_vaddr, program_header->p_memsz + ((program_header->p_vaddr + load_bias) % page_size),
-			 PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE | MAP_FIXED, -1, 0);
-
-		memcpy((void *)(program_header->p_vaddr + load_bias), elf_contents + program_header->p_offset, program_header->p_filesz);
-
-		mprotect(p_ali_vaddr, program_header->p_memsz + ((program_header->p_vaddr + load_bias) % page_size), permissions);
+		mprotect(p_ali_vaddr,
+			 program_header->p_memsz + (start - (uint64_t)p_ali_vaddr),
+			 permissions);
 
 		program_header = (Elf64_Phdr *)((void *)program_header + elf_header->e_phentsize);
 	}
@@ -122,7 +145,7 @@ void load_and_run(const char *filename, int argc, char **argv, char **envp)
 	
 	long arg_size = 0;
 	for (int i = 0; i < argc; i++) {
-		arg_size += strlen(argv[i]);
+		arg_size += strlen(argv[i]) + 1;
 	}
 
 	long envc = 0;
@@ -130,65 +153,75 @@ void load_and_run(const char *filename, int argc, char **argv, char **envp)
 
 	for (int i = 0; envp[i] != 0; i++) {
 		envc++;
-		env_size += strlen(envp[i]);
+		env_size += strlen(envp[i]) + 1;
 	}
 
 	void *stack_top = stack_base + STACK_PAGE_C * page_size;
-	void *stack_data = (stack_top - arg_size - env_size - 128)
-					  - (((long)stack_top - arg_size - env_size - 16) % 16);
-	long c = (envc + argc) % 2 == 0 ? 4 : 3;
-	void *stack_pointers = stack_data - (envc + argc + c) * 8 - 14 * 16;
-	void *sp = stack_pointers;
+
+	long data_size = arg_size + env_size + 16 + sizeof("x86_64");
+	long block_bytes = (argc + envc + 3) * 8 + AUXV_PAIRS * 16;
+	char *strings = (char *)stack_top - data_size;
+	void *sp = (void *)(((uintptr_t)strings - block_bytes) & ~(uintptr_t)0xF);
+	void *stack_pointers = sp;
 
 	*(long *)stack_pointers = argc;
-	stack_pointers += 8;
+	stack_pointers = (char *)stack_pointers + 8;
+
+	char *execfn = strings;
 
 	for (int i = 0; i < argc; i++) {
-
-		*(char **)stack_pointers = stack_data;
-		stack_data = stpcpy(stack_data, argv[i]) + 1;
-		
-		stack_pointers += 8;
+		*(char **)stack_pointers = strings;
+		strings = stpcpy(strings, argv[i]) + 1;
+		stack_pointers = (char *)stack_pointers + 8;
 	}
 
 	*(long *)stack_pointers = 0;
-	stack_pointers += 8;
+	stack_pointers = (char *)stack_pointers + 8;
 
 	for (int i = 0; i < envc; i++) {
-
-		*(char **)stack_pointers = stack_data;
-		stack_data = stpcpy(stack_data, envp[i]) + 1;
-		
-		stack_pointers += 8;
+		*(char **)stack_pointers = strings;
+		strings = stpcpy(strings, envp[i]) + 1;
+		stack_pointers = (char *)stack_pointers + 8;
 	}
 
 	*(long *)stack_pointers = 0;
-	stack_pointers += 8;
-	
-	uint64_t auxv[28] = {
-		AT_PHDR, at_phdr,
-		AT_PHENT, elf_header->e_phentsize,
-		AT_PHNUM, elf_header->e_phnum,
-		AT_PAGESZ, page_size,
-		AT_BASE, 0,
-		AT_ENTRY, elf_header->e_entry + load_bias,
-		AT_UID, getuid(),
-		AT_EUID, geteuid(),
-		AT_GID, getgid(),
-		AT_EGID, getegid(),
-		AT_SECURE, 0,
-		AT_RANDOM, 0,
-		AT_PLATFORM, 0,
-		AT_NULL, 0
+	stack_pointers = (char *)stack_pointers + 8;
+
+	char *random_addr = strings;
+
+	memcpy(random_addr, (const void *)getauxval(AT_RANDOM), 16);
+	strings += 16;
+
+	char *platform_addr = strings;
+
+	strcpy(platform_addr, "x86_64");
+
+	struct {
+		uint64_t type;
+		uint64_t value;
+	} auxv[] = {
+		{ AT_PHDR, at_phdr },
+		{ AT_PHENT, elf_header->e_phentsize },
+		{ AT_PHNUM, elf_header->e_phnum },
+		{ AT_PAGESZ, page_size },
+		{ AT_FLAGS, 0 },
+		{ AT_BASE, 0 },
+		{ AT_ENTRY, elf_header->e_entry + load_bias },
+		{ AT_UID, getuid() },
+		{ AT_EUID, geteuid() },
+		{ AT_GID, getgid() },
+		{ AT_EGID, getegid() },
+		{ AT_SECURE, 0 },
+		{ AT_RANDOM, (uint64_t)(uintptr_t)random_addr },
+		{ AT_HWCAP, getauxval(AT_HWCAP) },
+		{ AT_CLKTCK, sysconf(_SC_CLK_TCK) },
+		{ AT_PLATFORM, (uint64_t)(uintptr_t)platform_addr },
+		{ AT_EXECFN, (uint64_t)(uintptr_t)execfn },
+		{ AT_HWCAP2, getauxval(AT_HWCAP2) },
+		{ AT_SYSINFO_EHDR, getauxval(AT_SYSINFO_EHDR) },
+		{ AT_MINSIGSTKSZ, getauxval(AT_MINSIGSTKSZ) },
+		{ AT_NULL, 0 }
 	};
-
-	getrandom(stack_data, 16, 0);
-	auxv[23]= (uint64_t)stack_data;
-
-	stack_data += 16;
-
-	strcpy(stack_data, "x86_64");
-	auxv[25] = (uint64_t)stack_data;
 
 	memcpy(stack_pointers, auxv, sizeof(auxv));
 
@@ -198,10 +231,12 @@ void load_and_run(const char *filename, int argc, char **argv, char **envp)
 	__asm__ __volatile__(
 			"mov %0, %%rsp\n"
 			"xor %%rbp, %%rbp\n"
-			"jmp *%1\n"
+			"mov %1, %%rax\n"
+			"xor %%rdx, %%rdx\n"
+			"jmp *%%rax\n"
 			:
 			: "r"(sp), "r"(entry)
-			: "memory"
+			: "rax", "rdx", "memory"
 			);
 }
 
