@@ -9,7 +9,6 @@ static pthread_cond_t ring_not_empty = PTHREAD_COND_INITIALIZER;
 
 int ring_buffer_init(so_ring_buffer_t *ring, size_t cap)
 {
-
 	ring->data = malloc(cap);
 	ring->cap = cap / PKT_SZ;
 
@@ -38,7 +37,7 @@ ssize_t ring_buffer_enqueue(so_ring_buffer_t *ring, void *data, size_t size)
 	memcpy(&(ring->data[ring->write_pos]), data, PKT_SZ);
 
 	ring->write_pos = (ring->write_pos + 1) % ring->cap;
-	ring->len ++;
+	ring->len++;
 	pthread_cond_signal(&ring_not_empty);
 
 	pthread_mutex_unlock(&ring_mutex);
@@ -51,9 +50,8 @@ ssize_t ring_buffer_dequeue(so_ring_buffer_t *ring, void *data, size_t size,
 {
 	pthread_mutex_lock(&ring_mutex);
 
-	while (ring->len == 0 && !ring->has_stopped) {
+	while (ring->len == 0 && !ring->has_stopped)
 		pthread_cond_wait(&ring_not_empty, &ring_mutex);
-	}
 
 	if (ring->has_stopped && ring->len == 0) {
 		pthread_mutex_unlock(&ring_mutex);
@@ -62,10 +60,9 @@ ssize_t ring_buffer_dequeue(so_ring_buffer_t *ring, void *data, size_t size,
 
 	memcpy(data, &(ring->data[ring->read_pos]), PKT_SZ);
 
-
 	ring->read_pos = (ring->read_pos + 1) % ring->cap;
-	ring->len --;
-	
+	ring->len--;
+
 	ring->order++;
 	*order = ring->order;
 

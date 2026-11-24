@@ -69,9 +69,8 @@ int main(int argc, char **argv)
 	publish_data(&ring_buffer, argv[1]);
 
 	/* wait for the consumer threads to finish */
-	for (int i = 0; i < threads; i++) {
+	for (int i = 0; i < threads; i++)
 		rc = pthread_join(thread_ids[i], NULL);
-	}
 
 	destroy_consumers();
 	ring_buffer_destroy(&ring_buffer);
