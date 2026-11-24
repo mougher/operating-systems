@@ -3,6 +3,8 @@
 #ifndef __SO_PACKET_H__
 #define __SO_PACKET_H__
 
+#include <sys/types.h>
+
 /* For pleasing the checkpatch. */
 #ifndef __packed
 #define __packed __attribute((__packed__))

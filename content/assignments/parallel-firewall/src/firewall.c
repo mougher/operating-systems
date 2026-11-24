@@ -68,8 +68,17 @@ int main(int argc, char **argv)
 	/* start publishing data */
 	publish_data(&ring_buffer, argv[1]);
 
-	/* TODO: wait for child threads to finish execution*/
-	(void) threads;
+	/* wait for the consumer threads to finish */
+	for (int i = 0; i < threads; i++) {
+		rc = pthread_join(thread_ids[i], NULL);
+		if (rc != 0) {
+			errno = rc;
+			DIE(rc != 0, "pthread_join");
+		}
+	}
+
+	destroy_consumers();
+	ring_buffer_destroy(&ring_buffer);
 
 	free(thread_ids);
 

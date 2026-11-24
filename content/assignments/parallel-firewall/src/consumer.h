@@ -9,12 +9,14 @@
 typedef struct so_consumer_ctx_t {
 	struct so_ring_buffer_t *producer_rb;
 
-    /* TODO: add synchronization primitives for timestamp ordering */
+	/* Opened once by create_consumers() and shared by all consumers. */
+	int out_fd;
 } so_consumer_ctx_t;
 
 int create_consumers(pthread_t *tids,
-					int num_consumers,
-					so_ring_buffer_t *rb,
-					const char *out_filename);
+		     int num_consumers,
+		     so_ring_buffer_t *rb,
+		     const char *out_filename);
+void destroy_consumers(void);
 
 #endif /* __SO_CONSUMER_H__ */
