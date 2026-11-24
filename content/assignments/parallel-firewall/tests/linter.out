@@ -1,0 +1,11 @@
+cd ../src/.. && checkpatch.pl -f src/*.c
+/bin/sh: 1: checkpatch.pl: not found
+make: [Makefile:16: lint] Error 127 (ignored)
+cd ../src/.. && cpplint --recursive src/
+/bin/sh: 1: cpplint: not found
+make: [Makefile:17: lint] Error 127 (ignored)
+cd ../src/.. && shellcheck tests/*.sh
+/bin/sh: 1: shellcheck: not found
+make: [Makefile:18: lint] Error 127 (ignored)
+# All tests/*.py are checker related
+# -cd ../src/.. && pylint tests/*.py

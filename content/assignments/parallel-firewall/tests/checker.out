@@ -1,0 +1,49 @@
+make -C ../src clean
+make[1]: Entering directory '/home/alex/HarnessAP/operating-systems/content/assignments/parallel-firewall/src'
+rm -f ring_buffer.o producer.o consumer.o packet.o ../utils/log/log.o serial.o firewall.o
+rm -f firewall serial
+make[1]: Leaving directory '/home/alex/HarnessAP/operating-systems/content/assignments/parallel-firewall/src'
+rm -f *~
+rm -rf __pycache__
+rm -rf out
+make SRC_PATH=../src
+make[1]: Entering directory '/home/alex/HarnessAP/operating-systems/content/assignments/parallel-firewall/tests'
+make -C ../src UTILS_PATH=/home/alex/HarnessAP/operating-systems/content/assignments/parallel-firewall/utils
+make[2]: Entering directory '/home/alex/HarnessAP/operating-systems/content/assignments/parallel-firewall/src'
+cc -Wall -Wextra -ggdb -O0 -I/home/alex/HarnessAP/operating-systems/content/assignments/parallel-firewall/utils  -c -o ring_buffer.o ring_buffer.c
+cc -Wall -Wextra -ggdb -O0 -I/home/alex/HarnessAP/operating-systems/content/assignments/parallel-firewall/utils  -c -o producer.o producer.c
+cc -Wall -Wextra -ggdb -O0 -I/home/alex/HarnessAP/operating-systems/content/assignments/parallel-firewall/utils  -c -o consumer.o consumer.c
+cc -Wall -Wextra -ggdb -O0 -I/home/alex/HarnessAP/operating-systems/content/assignments/parallel-firewall/utils  -c -o packet.o packet.c
+cc -I/home/alex/HarnessAP/operating-systems/content/assignments/parallel-firewall/utils -Wall -Wextra -ggdb -O0 -c -o /home/alex/HarnessAP/operating-systems/content/assignments/parallel-firewall/utils/log/log.o  /home/alex/HarnessAP/operating-systems/content/assignments/parallel-firewall/utils/log/log.c
+cc -Wall -Wextra -ggdb -O0 -I/home/alex/HarnessAP/operating-systems/content/assignments/parallel-firewall/utils  -c -o firewall.o firewall.c
+cc -I/home/alex/HarnessAP/operating-systems/content/assignments/parallel-firewall/utils -Wall -Wextra -ggdb -O0 -o firewall ring_buffer.o producer.o consumer.o packet.o /home/alex/HarnessAP/operating-systems/content/assignments/parallel-firewall/utils/log/log.o firewall.o -lpthread
+cc -Wall -Wextra -ggdb -O0 -I/home/alex/HarnessAP/operating-systems/content/assignments/parallel-firewall/utils  -c -o serial.o serial.c
+cc -I/home/alex/HarnessAP/operating-systems/content/assignments/parallel-firewall/utils -Wall -Wextra -ggdb -O0 -o serial ring_buffer.o producer.o consumer.o packet.o /home/alex/HarnessAP/operating-systems/content/assignments/parallel-firewall/utils/log/log.o serial.o -lpthread
+make[2]: Leaving directory '/home/alex/HarnessAP/operating-systems/content/assignments/parallel-firewall/src'
+make[1]: Leaving directory '/home/alex/HarnessAP/operating-systems/content/assignments/parallel-firewall/tests'
+SRC_PATH=../src python3 checker.py
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Skipping test generation ~~~~~~~~~~~~~~~~~~~~~~~~
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Running tests ... ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Test [    10 packets, sort False, 1 thread ] ...................... passed ... 3
+Test [ 1,000 packets, sort False, 1 thread ] ...................... passed ... 3
+Test [20,000 packets, sort False, 1 thread ] ...................... passed ... 4
+Test [    10 packets, sort True , 2 threads] ...................... passed ... 5
+Test [    10 packets, sort True , 4 threads] ...................... passed ... 5
+Test [   100 packets, sort True , 2 threads] ...................... passed ... 5
+Test [   100 packets, sort True , 4 threads] ...................... passed ... 5
+Test [ 1,000 packets, sort True , 2 threads] ...................... passed ... 5
+Test [ 1,000 packets, sort True , 4 threads] ...................... passed ... 5
+Test [10,000 packets, sort True , 2 threads] ...................... passed ... 5
+Test [10,000 packets, sort True , 4 threads] ...................... passed ... 5
+Test [20,000 packets, sort True , 2 threads] ...................... passed ... 5
+Test [20,000 packets, sort True , 4 threads] ...................... passed ... 5
+Test [ 1,000 packets, sort False, 4 threads] ...................... passed ... 5
+Test [ 1,000 packets, sort False, 8 threads] ...................... passed ... 5
+Test [10,000 packets, sort False, 4 threads] ...................... passed ... 5
+Test [10,000 packets, sort False, 8 threads] ...................... passed ... 5
+Test [20,000 packets, sort False, 4 threads] ...................... passed ... 5
+Test [20,000 packets, sort False, 8 threads] ...................... passed ... 5
+
+Checker:                                                                    90/100

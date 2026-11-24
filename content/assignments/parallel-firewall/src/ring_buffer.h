@@ -7,25 +7,22 @@
 #include <string.h>
 #include <stdlib.h>
 #include <pthread.h>
+#include "packet.h"
 
 typedef struct so_ring_buffer_t {
-	char *data;
+	so_packet_t *data;
 
 	size_t read_pos;
 	size_t write_pos;
 
 	size_t len;
-	size_t cap;		/* size of data, in bytes */
+	size_t cap;
 
 	char has_stopped;
+	
+	size_t order;
+	size_t print_order;
 
-	/* Packet counters used to write the log in input order. */
-	size_t order;		/* last ticket handed out by dequeue */
-	size_t print_order;	/* last ticket written to the log */
-
-	pthread_mutex_t mutex;
-	pthread_cond_t not_full;
-	pthread_cond_t not_empty;
 } so_ring_buffer_t;
 
 int     ring_buffer_init(so_ring_buffer_t *rb, size_t cap);

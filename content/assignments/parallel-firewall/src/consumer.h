@@ -5,12 +5,13 @@
 
 #include "ring_buffer.h"
 #include "packet.h"
+#include "stdio.h"
+#include "packet.h"
 
 typedef struct so_consumer_ctx_t {
 	struct so_ring_buffer_t *producer_rb;
+	FILE *outfp;
 
-	/* Opened once by create_consumers() and shared by all consumers. */
-	int out_fd;
 } so_consumer_ctx_t;
 
 int create_consumers(pthread_t *tids,
